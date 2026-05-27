@@ -416,7 +416,7 @@ function isLate(row) {
   // already marked late in status
   if (/atras|vencid|urgent|critico|crítico/.test(status)) return true;
   // skip completed/cancelled
-  if (/conclu|finaliz|entregue|separad|cancel|suspen/.test(status)) return false;
+  if (/conclu|finaliz|entregue|separad|cancel|suspen|descontinuad/.test(status)) return false;
   // check date saída
   const dIdx = findDateSaidaIdx();
   if (dIdx < 0) return false;
