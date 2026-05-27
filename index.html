@@ -398,9 +398,13 @@ function getVisibleCols() {
   return headers.map((h,i)=>({h,i})).filter(({h})=>{
     const l = h.toLowerCase();
     return /cliente/.test(l) || /pedido/.test(l) || /descri/.test(l) ||
-           /\bqtd\b|quantidade/.test(l) || /sa[íi]da/.test(l) || /observ|obs\.?$/.test(l);
+           /\bqtd\b|quantidade/.test(l) || /produz/.test(l) ||
+           /sa[íi]da/.test(l) || /observ|obs\.?$/.test(l);
   });
 }
+
+function getQtdIdx()      { return headers.findIndex(h=>/^qtd\.?\s*$/i.test(h.trim())); }
+function getProduzIdx()   { return headers.findIndex(h=>/produz/i.test(h)); }
 
 function findDateSaidaIdx() {
   return headers.findIndex(h => /sa[íi]da/i.test(h));
@@ -433,10 +437,14 @@ function isLate(row) {
 
 function buildHead() {
   const vis = getVisibleCols();
+  const hasProduz = getProduzIdx() >= 0;
+  const hasQtd    = getQtdIdx() >= 0;
+  const showFalt  = hasProduz && hasQtd;
   document.getElementById('tableHead').innerHTML = '<tr>' +
     '<th class="row-num">#</th>' +
     '<th onclick="doSort('+STATUS_COL+')" class="'+(sortCol===STATUS_COL?'sorted':'')+'">Status<span class="sort-arrow">'+(sortCol===STATUS_COL?(sortAsc?'↑':'↓'):'↕')+'</span></th>' +
     vis.map(({h,i})=>`<th onclick="doSort(${i})" class="${sortCol===i?'sorted':''}">${h}<span class="sort-arrow">${sortCol===i?(sortAsc?'↑':'↓'):'↕'}</span></th>`).join('') +
+    (showFalt ? '<th style="color:#f85149">Faltando</th>' : '') +
     '</tr>';
 }
 
@@ -510,7 +518,18 @@ function renderRows(data) {
         }
         if (isObs) return `<td class="obs-cell" title="${v}">${v||'—'}</td>`;
         return `<td title="${v}">${v}</td>`;
-      }).join('')+
+      }).join('') +
+      (()=>{
+        const qi = getQtdIdx(), pi = getProduzIdx();
+        if (qi<0 || pi<0) return '';
+        const qtd  = parseFloat((row[qi]||'0').replace(/[^\d.,-]/g,'').replace(',','.')) || 0;
+        const prod = parseFloat((row[pi]||'0').replace(/[^\d.,-]/g,'').replace(',','.')) || 0;
+        const falt = qtd - prod;
+        if (isNaN(falt)) return '<td>—</td>';
+        const color = falt > 0 ? '#f85149' : falt === 0 ? '#3fb950' : '#d29922';
+        const label = falt > 0 ? falt.toLocaleString('pt-BR') : falt === 0 ? '✓ Completo' : falt.toLocaleString('pt-BR');
+        return `<td style="color:${color};font-weight:600">${label}</td>`;
+      })() +
       '</tr>';
   }).join('');
 }
