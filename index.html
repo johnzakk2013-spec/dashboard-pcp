@@ -522,8 +522,14 @@ function renderRows(data) {
       (()=>{
         const qi = getQtdIdx(), pi = getProduzIdx();
         if (qi<0 || pi<0) return '';
-        const qtd  = parseFloat((row[qi]||'0').replace(/[^\d.,-]/g,'').replace(',','.')) || 0;
-        const prod = parseFloat((row[pi]||'0').replace(/[^\d.,-]/g,'').replace(',','.')) || 0;
+        const parseBR = s => {
+          let c = String(s||'0').trim().replace(/[^\d.,]/g,'');
+          if (c.includes(',')) c = c.replace(/\./g,'').replace(',','.');
+          else if (/\d{1,3}(\.\d{3})/.test(c)) c = c.replace(/\./g,'');
+          return parseFloat(c) || 0;
+        };
+        const qtd  = parseBR(row[qi]);
+        const prod = parseBR(row[pi]);
         const falt = qtd - prod;
         if (isNaN(falt)) return '<td>—</td>';
         const color = falt > 0 ? '#f85149' : falt === 0 ? '#3fb950' : '#d29922';
