@@ -1,11 +1,9 @@
 export default async function handler(req, res) {
-  const SHEET_ID = '1BcTuI0h-Z3jTYfjEg9pHlI_A5jwg2MMuFfT2KH5FjP8';
-  const GID = '1031547903';
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${GID}`;
-
+  const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR_gxjeNQJi4gRJeTdEL6BZ3UxtGm7fiRIvFnBDkcBwXpGKg1gYgSDu5dSmGvYH4LKFLl_t4g4PkpW3/pub?gid=1031547903&single=true&output=csv';
+ 
   try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`Google Sheets retornou ${response.status}`);
+    const response = await fetch(CSV_URL);
+    if (!response.ok) throw new Error(`Erro ${response.status}`);
     const text = await response.text();
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -15,3 +13,4 @@ export default async function handler(req, res) {
     res.status(500).json({ error: err.message });
   }
 }
+ 
