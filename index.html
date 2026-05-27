@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard PCP</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#1e2530;--bg4:#252d3a;
+  --border:#30363d;--border2:#3d444d;
+  --text:#e6edf3;--text2:#8b949e;--text3:#6e7681;
+  --accent:#388bfd;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;font-size:14px;min-height:100vh}
+
+header{
+  background:var(--bg2);border-bottom:1px solid var(--border);
+  padding:14px 28px;display:flex;align-items:center;gap:16px;
+  position:sticky;top:0;z-index:100;
+}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-icon{
+  width:36px;height:36px;
+  background:linear-gradient(135deg,#1f6feb,#388bfd);
+  border-radius:8px;display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:12px;color:#fff;letter-spacing:-.5px;
+}
+.logo-text{font-size:16px;font-weight:600;letter-spacing:-.3px}
+.logo-sub{font-size:11px;color:var(--text3);margin-top:1px}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.live-pill{
+  display:flex;align-items:center;gap:6px;
+  font-size:12px;color:var(--text3);
+}
+.live-dot{
+  width:7px;height:7px;border-radius:50%;background:#3fb950;
+  animation:pulse 2s infinite;
+}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(63,185,80,.5)}50%{box-shadow:0 0 0 5px rgba(63,185,80,0)}}
+.btn{
+  background:var(--bg3);border:1px solid var(--border2);color:var(--text2);
+  border-radius:6px;padding:7px 13px;font-size:12px;cursor:pointer;
+  display:flex;align-items:center;gap:6px;transition:all .15s;
+}
+.btn:hover{background:var(--bg4);color:var(--text);border-color:#58a6ff}
+.btn svg{width:14px;height:14px}
+#countdown{font-size:11px;color:var(--text3);min-width:130px;text-align:right}
+
+main{padding:24px 28px;max-width:1600px;margin:0 auto}
+
+/* ESTADO */
+.state-box{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:300px;gap:14px;text-align:center;
+}
+.spinner{
+  width:38px;height:38px;border:3px solid var(--border);
+  border-top-color:#388bfd;border-radius:50%;animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.error-box{
+  background:#2d1b1b;border:1px solid #f85149;border-radius:10px;
+  padding:24px 32px;max-width:500px;
+}
+.error-box h3{color:#f85149;margin-bottom:8px;font-size:15px}
+.error-box p{color:var(--text2);font-size:13px;line-height:1.6}
+.error-box ul{color:var(--text2);font-size:13px;line-height:1.9;margin:10px 0 14px 20px}
+
+/* CARDS */
+#cardsGrid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+  gap:12px;margin-bottom:24px;
+}
+.stat-card{
+  background:var(--bg2);border:1px solid var(--border);
+  border-left:3px solid transparent;border-radius:10px;
+  padding:16px;cursor:pointer;transition:transform .15s,opacity .15s;
+  position:relative;overflow:hidden;
+}
+.stat-card:hover{transform:translateY(-2px)}
+.stat-card.dimmed{opacity:.4}
+.stat-card.selected{outline:2px solid var(--accent);outline-offset:1px}
+.card-total{border-left-color:#388bfd}
+.card-label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);margin-bottom:8px}
+.card-value{font-size:30px;font-weight:700;line-height:1;margin-bottom:3px;font-variant-numeric:tabular-nums}
+.card-pct{font-size:11px;color:var(--text3)}
+
+/* LAYOUT */
+.dash-row{
+  display:grid;grid-template-columns:1fr 300px;
+  gap:16px;margin-bottom:24px;
+  align-items:start;
+}
+@media(max-width:880px){.dash-row{grid-template-columns:1fr}}
+.panel{
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:10px;padding:18px;
+}
+.panel-title{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:14px}
+#chartWrap{position:relative;height:220px}
+
+/* FILTROS */
+.f-group{margin-bottom:13px}
+.f-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+input[type=text],select{
+  width:100%;background:var(--bg3);border:1px solid var(--border2);
+  color:var(--text);border-radius:6px;padding:8px 10px;font-size:13px;
+  outline:none;transition:border-color .15s;
+}
+input[type=text]:focus,select:focus{border-color:#388bfd}
+select option{background:var(--bg3)}
+.status-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
+.s-tag{
+  background:var(--bg3);border:1px solid var(--border2);
+  border-radius:4px;padding:4px 9px;font-size:11px;font-weight:500;
+  cursor:pointer;color:var(--text2);transition:all .15s;
+}
+.s-tag.active{border-width:1.5px}
+.clear-btn{
+  width:100%;background:transparent;border:1px dashed var(--border2);
+  color:var(--text3);border-radius:6px;padding:7px;font-size:12px;
+  cursor:pointer;transition:all .15s;margin-top:6px;
+}
+.clear-btn:hover{border-color:#f85149;color:#f85149;background:rgba(248,81,73,.07)}
+
+/* TABELA */
+.tbl-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:10px;
+}
+.tbl-title{font-size:13px;font-weight:600}
+.tbl-count{font-size:12px;color:var(--text3)}
+.tbl-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.tbl-scroll{overflow-x:auto;max-height:500px;overflow-y:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{
+  background:var(--bg3);color:var(--text2);font-weight:600;
+  padding:10px 12px;text-align:left;white-space:nowrap;
+  border-bottom:1px solid var(--border);
+  position:sticky;top:0;z-index:1;cursor:pointer;
+  font-size:11px;text-transform:uppercase;letter-spacing:.5px;
+  user-select:none;
+}
+thead th:hover{color:var(--text)}
+thead th.sorted{color:#58a6ff}
+.sort-arrow{margin-left:3px;opacity:.35;font-size:10px}
+.sorted .sort-arrow{opacity:1}
+tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--bg3)}
+td{padding:9px 12px;color:var(--text2);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+td.row-num{color:var(--text3);font-size:11px;font-family:monospace;width:40px}
+.badge{display:inline-block;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap}
+.no-data{text-align:center;padding:48px;color:var(--text3);font-size:13px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">PCP</div>
+    <div>
+      <div class="logo-text">Dashboard PCP</div>
+      <div class="logo-sub">Planejamento e Controle de Produção</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="live-pill">
+      <div class="live-dot"></div>
+      <span id="lastUpdate">—</span>
+    </div>
+    <span id="countdown"></span>
+    <button class="btn" onclick="loadData(true)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M1 4v6h6"/><path d="M23 20v-6h-6"/>
+        <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+      </svg>
+      Atualizar
+    </button>
+  </div>
+</header>
+
+<main>
+  <div id="stateLoading" class="state-box">
+    <div class="spinner"></div>
+    <div style="color:var(--text3);font-size:13px">Carregando dados da planilha...</div>
+  </div>
+
+  <div id="stateError" class="state-box" style="display:none">
+    <div class="error-box">
+      <h3>⚠️ Erro ao carregar dados</h3>
+      <p>Verifique os seguintes pontos:</p>
+      <ul>
+        <li>A planilha está compartilhada como <strong>"Qualquer pessoa com o link"</strong></li>
+        <li>Ou vá em <strong>Arquivo → Publicar na web</strong> e publique a aba</li>
+      </ul>
+      <button class="btn" onclick="loadData(true)" style="margin-top:4px">Tentar novamente</button>
+    </div>
+  </div>
+
+  <div id="dashboard" style="display:none">
+    <div id="cardsGrid"></div>
+    <div class="dash-row">
+      <div class="panel">
+        <div class="panel-title">Distribuição por Status</div>
+        <div id="chartWrap">
+          <canvas id="statusChart" role="img" aria-label="Gráfico distribuição por status"></canvas>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Filtros</div>
+        <div class="f-group">
+          <div class="f-label">Busca</div>
+          <input type="text" id="searchInput" placeholder="Pesquisar em todos os campos..." oninput="applyFilters()">
+        </div>
+        <div class="f-group">
+          <div class="f-label">Status</div>
+          <div class="status-tags" id="statusTags"></div>
+        </div>
+        <div id="extraFilters"></div>
+        <button class="clear-btn" onclick="clearFilters()">✕ Limpar todos os filtros</button>
+      </div>
+    </div>
+    <div class="tbl-header">
+      <div class="tbl-title">Registros</div>
+      <div class="tbl-count" id="tblCount"></div>
+    </div>
+    <div class="tbl-wrap">
+      <div class="tbl-scroll">
+        <table>
+          <thead id="tableHead"></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const STATUS_COL = 17;
+const REFRESH_MS = 5 * 60 * 1000;
+
+let allData=[], headers=[], chartInst=null;
+let activeStatus=null, sortCol=-1, sortAsc=true;
+let refreshTimer, cdTimer;
+
+const COLORS = [
+  {r:/conclu|finaliz|entregue|done|pronto/i,     tx:'#3fb950',bg:'rgba(63,185,80,.15)',bd:'#3fb950'},
+  {r:/andamento|processo|produção|producao|fabri/i,tx:'#388bfd',bg:'rgba(56,139,253,.15)',bd:'#388bfd'},
+  {r:/pendente|aguard|espera|fila|aberto|planej/i, tx:'#d29922',bg:'rgba(210,153,34,.15)',bd:'#d29922'},
+  {r:/atras|vencid|urgent|critico|crítico|parado/i,tx:'#f85149',bg:'rgba(248,81,73,.15)',bd:'#f85149'},
+  {r:/cancel|suspen/i,                             tx:'#6e7681',bg:'rgba(110,118,129,.15)',bd:'#6e7681'},
+  {r:/aprovad|liberad/i,                           tx:'#39d353',bg:'rgba(57,211,83,.15)',bd:'#39d353'},
+  {r:/revis|inspect|qualid/i,                      tx:'#d2a8ff',bg:'rgba(210,168,255,.15)',bd:'#d2a8ff'},
+  {r:/.*/,                                         tx:'#79c0ff',bg:'rgba(121,192,255,.15)',bd:'#79c0ff'},
+];
+
+const col = s => COLORS.find(c => c.r.test(s||'')) || COLORS[COLORS.length-1];
+
+async function loadData(manual=false) {
+  show('stateLoading');
+  try {
+    const r = await fetch('/api/data?t='+Date.now());
+    if (!r.ok) throw new Error(r.status);
+    const csv = await r.text();
+    if (csv.startsWith('{')) throw new Error('Erro na API');
+    const parsed = Papa.parse(csv, {skipEmptyLines:true});
+    const rows = parsed.data.filter(r=>r.some(c=>c.trim()));
+    if (rows.length < 2) throw new Error('Sem dados');
+    headers = rows[0].map(h=>h.trim());
+    allData = rows.slice(1).filter(r=>r.some(c=>c.trim()));
+    build();
+    show('dashboard');
+    document.getElementById('lastUpdate').textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR');
+    startRefresh();
+  } catch(e) {
+    console.error(e);
+    show('stateError');
+  }
+}
+
+function show(id) {
+  ['stateLoading','stateError','dashboard'].forEach(i=>{
+    document.getElementById(i).style.display = i===id ? (i==='dashboard'?'block':'flex') : 'none';
+  });
+}
+
+function build() {
+  buildCards(); buildStatusTags(); buildExtraFilters(); buildChart(); buildHead(); applyFilters();
+}
+
+function statusCounts(data) {
+  const c={};
+  data.forEach(r=>{ const s=(r[STATUS_COL]||'').trim(); c[s]=(c[s]||0)+1; });
+  return Object.fromEntries(Object.entries(c).sort((a,b)=>b[1]-a[1]));
+}
+
+function buildCards() {
+  const counts = statusCounts(allData);
+  const total = allData.length;
+  let h = `<div class="stat-card card-total" onclick="clearFilters()">
+    <div class="card-label">Total</div>
+    <div class="card-value" style="color:#388bfd">${total}</div>
+    <div class="card-pct">todos os registros</div>
+  </div>`;
+  Object.entries(counts).forEach(([s,n]) => {
+    const c = col(s);
+    h += `<div class="stat-card" data-status="${s}" style="border-left-color:${c.bd}"
+      onclick="filterStatus('${s.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">
+      <div class="card-label" style="color:${c.tx}">${s||'(em branco)'}</div>
+      <div class="card-value" style="color:${c.tx}">${n}</div>
+      <div class="card-pct">${((n/total)*100).toFixed(1)}% do total</div>
+    </div>`;
+  });
+  document.getElementById('cardsGrid').innerHTML = h;
+}
+
+function buildStatusTags() {
+  const counts = statusCounts(allData);
+  document.getElementById('statusTags').innerHTML = Object.entries(counts).map(([s,n]) => {
+    const c = col(s);
+    return `<span class="s-tag" data-status="${s}"
+      style="color:${c.tx}"
+      onclick="filterStatus('${s.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">
+      ${s||'(em branco)'} ${n}
+    </span>`;
+  }).join('');
+}
+
+function buildExtraFilters() {
+  const cols = headers.map((h,i)=>({h,i})).filter(({h,i})=>i!==STATUS_COL&&h&&i<12).slice(0,4);
+  document.getElementById('extraFilters').innerHTML = cols.map(({h,i})=>{
+    const vals = [...new Set(allData.map(r=>(r[i]||'').trim()).filter(Boolean))].sort();
+    if (vals.length<2||vals.length>50) return '';
+    return `<div class="f-group">
+      <div class="f-label">${h}</div>
+      <select onchange="applyFilters()" data-col="${i}">
+        <option value="">Todos</option>
+        ${vals.map(v=>`<option>${v}</option>`).join('')}
+      </select>
+    </div>`;
+  }).join('');
+}
+
+function buildChart() {
+  const counts = statusCounts(allData);
+  const labels = Object.keys(counts);
+  const values = Object.values(counts);
+  const borders = labels.map(l=>col(l).bd);
+  if (chartInst) { chartInst.destroy(); chartInst=null; }
+  chartInst = new Chart(document.getElementById('statusChart'), {
+    type:'bar',
+    data:{
+      labels,
+      datasets:[{
+        data:values,
+        backgroundColor:borders.map(b=>b+'28'),
+        borderColor:borders,
+        borderWidth:1.5,
+        borderRadius:4,
+        borderSkipped:false
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw} itens`}}},
+      scales:{
+        x:{grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'#8b949e',font:{size:11},maxRotation:35,autoSkip:false}},
+        y:{grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'#8b949e',font:{size:11},stepSize:1},beginAtZero:true}
+      }
+    }
+  });
+}
+
+function buildHead() {
+  const vis = headers.slice(0,20).map((h,i)=>({h,i})).filter(({h})=>h);
+  document.getElementById('tableHead').innerHTML = '<tr>' +
+    '<th class="row-num">#</th>' +
+    vis.map(({h,i})=>`<th onclick="doSort(${i})" class="${sortCol===i?'sorted':''}">${h}<span class="sort-arrow">${sortCol===i?(sortAsc?'↑':'↓'):'↕'}</span></th>`).join('') +
+    '</tr>';
+}
+
+function applyFilters() {
+  const q = document.getElementById('searchInput').value.toLowerCase().trim();
+  const sels = [...document.querySelectorAll('#extraFilters select')];
+
+  let data = allData.filter(row => {
+    if (activeStatus!==null && (row[STATUS_COL]||'').trim()!==activeStatus) return false;
+    for (const s of sels) { if (s.value && (row[+s.dataset.col]||'').trim()!==s.value) return false; }
+    if (q) return row.some(c=>(c||'').toLowerCase().includes(q));
+    return true;
+  });
+
+  if (sortCol>=0) {
+    data = [...data].sort((a,b)=>{
+      const va=a[sortCol]||'', vb=b[sortCol]||'';
+      const na=parseFloat(va), nb=parseFloat(vb);
+      const cmp = !isNaN(na)&&!isNaN(nb) ? na-nb : va.localeCompare(vb,'pt-BR',{numeric:true});
+      return sortAsc?cmp:-cmp;
+    });
+  }
+
+  document.getElementById('tblCount').textContent = `${data.length} de ${allData.length} registros`;
+  renderRows(data);
+  syncUI();
+}
+
+function renderRows(data) {
+  if (!data.length) {
+    document.getElementById('tableBody').innerHTML='<tr><td colspan="50" class="no-data">Nenhum registro encontrado.</td></tr>';
+    return;
+  }
+  const vis = headers.slice(0,20).map((h,i)=>({h,i})).filter(({h})=>h);
+  document.getElementById('tableBody').innerHTML = data.map((row,ri)=>
+    '<tr><td class="row-num">'+(ri+1)+'</td>' +
+    vis.map(({h,i})=>{
+      const v=(row[i]||'').trim();
+      if (i===STATUS_COL&&v) {
+        const c=col(v);
+        return `<td><span class="badge" style="color:${c.tx};background:${c.bg};border:1px solid ${c.bd}50">${v}</span></td>`;
+      }
+      return `<td title="${v}">${v}</td>`;
+    }).join('')+
+    '</tr>'
+  ).join('');
+}
+
+function syncUI() {
+  document.querySelectorAll('.stat-card[data-status]').forEach(el=>{
+    el.classList.toggle('dimmed', activeStatus!==null && el.dataset.status!==activeStatus);
+    el.classList.toggle('selected', activeStatus!==null && el.dataset.status===activeStatus);
+  });
+  document.querySelectorAll('.s-tag[data-status]').forEach(el=>{
+    const c = col(el.dataset.status);
+    el.classList.toggle('active', el.dataset.status===activeStatus);
+    if (el.dataset.status===activeStatus) {
+      el.style.background=c.bg;
+      el.style.borderColor=c.bd;
+    } else {
+      el.style.background='';
+      el.style.borderColor='';
+    }
+  });
+}
+
+function filterStatus(s) {
+  activeStatus = activeStatus===s ? null : s;
+  applyFilters();
+}
+
+function clearFilters() {
+  activeStatus=null;
+  document.getElementById('searchInput').value='';
+  document.querySelectorAll('#extraFilters select').forEach(s=>s.value='');
+  applyFilters();
+}
+
+function doSort(col) {
+  if (sortCol===col) sortAsc=!sortAsc; else { sortCol=col; sortAsc=true; }
+  buildHead();
+  applyFilters();
+}
+
+function startRefresh() {
+  clearInterval(refreshTimer); clearInterval(cdTimer);
+  let cd = REFRESH_MS/1000;
+  cdTimer = setInterval(()=>{
+    cd--;
+    const m=Math.floor(cd/60), s=cd%60;
+    document.getElementById('countdown').textContent=`próx. em ${m}:${String(s).padStart(2,'0')}`;
+    if(cd<=0) clearInterval(cdTimer);
+  },1000);
+  refreshTimer = setInterval(()=>loadData(), REFRESH_MS);
+}
+
+loadData();
+</script>
+</body>
+</html>
