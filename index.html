@@ -250,7 +250,7 @@ const STATUS_COL = 17;
 const REFRESH_MS = 5 * 60 * 1000;
 
 let allData=[], headers=[], chartInst=null;
-let activeStatus=null, sortCol=-1, sortAsc=true;
+let activeStatus=null, activeLate=false, sortCol=-1, sortAsc=true;
 let refreshTimer, cdTimer;
 
 const COLORS = [
@@ -307,10 +307,16 @@ function statusCounts(data) {
 function buildCards() {
   const counts = statusCounts(allData);
   const total = allData.length;
+  const lateCount = allData.filter(r=>isLate(r)).length;
   let h = `<div class="stat-card card-total" onclick="clearFilters()">
     <div class="card-label">Total</div>
     <div class="card-value" style="color:#388bfd">${total}</div>
     <div class="card-pct">todos os registros</div>
+  </div>
+  <div class="stat-card" id="cardLate" style="border-left-color:#f85149;cursor:pointer" onclick="toggleLateFilter()">
+    <div class="card-label" style="color:#f85149">⚠ Atrasados</div>
+    <div class="card-value" style="color:#f85149">${lateCount}</div>
+    <div class="card-pct">${total>0?((lateCount/total)*100).toFixed(1):0}% do total</div>
   </div>`;
   Object.entries(counts).forEach(([s,n]) => {
     const c = col(s);
@@ -410,7 +416,7 @@ function isLate(row) {
   // already marked late in status
   if (/atras|vencid|urgent|critico|crítico/.test(status)) return true;
   // skip completed/cancelled
-  if (/conclu|finaliz|entregue|cancel|suspen/.test(status)) return false;
+  if (/conclu|finaliz|entregue|separad|cancel|suspen/.test(status)) return false;
   // check date saída
   const dIdx = findDateSaidaIdx();
   if (dIdx < 0) return false;
@@ -434,6 +440,7 @@ function applyFilters() {
   const sels = [...document.querySelectorAll('#extraFilters select')];
 
   let data = allData.filter(row => {
+    if (activeLate && !isLate(row)) return false;
     if (activeStatus!==null && (row[STATUS_COL]||'').trim()!==activeStatus) return false;
     for (const s of sels) { if (s.value && (row[+s.dataset.col]||'').trim()!==s.value) return false; }
     if (q) return row.some(c=>(c||'').toLowerCase().includes(q));
@@ -492,6 +499,12 @@ function renderRows(data) {
 }
 
 function syncUI() {
+  const cl = document.getElementById('cardLate');
+  if (cl) {
+    cl.classList.toggle('dimmed', activeStatus!==null && !activeLate);
+    cl.classList.toggle('selected', activeLate);
+    cl.style.outline = activeLate ? '2px solid #f85149' : '';
+  }
   document.querySelectorAll('.stat-card[data-status]').forEach(el=>{
     el.classList.toggle('dimmed', activeStatus!==null && el.dataset.status!==activeStatus);
     el.classList.toggle('selected', activeStatus!==null && el.dataset.status===activeStatus);
@@ -509,13 +522,22 @@ function syncUI() {
   });
 }
 
+function toggleLateFilter() {
+  activeLate = !activeLate;
+  if (activeLate) activeStatus = null;
+  document.getElementById('cardLate').classList.toggle('selected', activeLate);
+  document.getElementById('cardLate').style.outline = activeLate ? '2px solid #f85149' : '';
+  applyFilters();
+}
+
 function filterStatus(s) {
   activeStatus = activeStatus===s ? null : s;
   applyFilters();
 }
 
 function clearFilters() {
-  activeStatus=null;
+  activeStatus=null; activeLate=false;
+  const cl=document.getElementById('cardLate'); if(cl){cl.classList.remove('selected');cl.style.outline='';}
   document.getElementById('searchInput').value='';
   document.querySelectorAll('#extraFilters select').forEach(s=>s.value='');
   applyFilters();
