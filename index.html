@@ -202,6 +202,38 @@ td.row-num{color:var(--text3);font-size:11px;font-family:monospace;width:40px}
 .row-has-comments:hover{background:rgba(121,192,255,.2)}
 .cm-btn-open{background:none;border:1px dashed var(--border2);color:var(--text3);border-radius:4px;padding:2px 7px;font-size:11px;cursor:pointer;transition:all .15s}
 .cm-btn-open:hover{border-color:#388bfd;color:#388bfd}
+
+/* COMMENT TICKER */
+#cmTicker{
+  background:var(--bg2);border:1px solid #f85149;border-radius:8px;
+  margin-bottom:20px;padding:10px 16px;display:none;
+  align-items:center;gap:12px;overflow:hidden;
+}
+#cmTicker.visible{display:flex}
+.ticker-badge{
+  background:#f85149;color:#fff;font-size:10px;font-weight:700;
+  border-radius:4px;padding:3px 7px;white-space:nowrap;flex-shrink:0;
+}
+.ticker-wrap{flex:1;overflow:hidden;position:relative;height:20px}
+.ticker-slide{
+  position:absolute;width:100%;top:0;left:0;
+  font-size:13px;color:var(--text2);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;
+  opacity:0;transition:opacity .4s;pointer-events:none;
+  cursor:pointer;
+}
+.ticker-slide.active{opacity:1;pointer-events:all}
+.ticker-slide:hover{color:var(--text)}
+.ticker-slide b{color:#f85149}
+.ticker-slide span{color:var(--text3);font-size:12px}
+.ticker-nav{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.ticker-nav button{
+  background:none;border:1px solid var(--border2);color:var(--text3);
+  border-radius:4px;width:24px;height:24px;cursor:pointer;font-size:12px;
+  display:flex;align-items:center;justify-content:center;transition:all .15s;
+}
+.ticker-nav button:hover{border-color:#f85149;color:#f85149}
+.ticker-counter{font-size:11px;color:var(--text3);min-width:32px;text-align:center}
 </style>
 </head>
 <body>
@@ -249,6 +281,17 @@ td.row-num{color:var(--text3);font-size:11px;font-family:monospace;width:40px}
   </div>
 
   <div id="dashboard" style="display:none">
+
+    <div id="cmTicker">
+      <div class="ticker-badge">💬 NOTAS</div>
+      <div class="ticker-wrap" id="tickerWrap"></div>
+      <div class="ticker-nav">
+        <button onclick="tickerPrev()" title="Anterior">‹</button>
+        <span class="ticker-counter" id="tickerCounter"></span>
+        <button onclick="tickerNext()" title="Próximo">›</button>
+        <button id="tickerPauseBtn" onclick="toggleTickerPause()" title="Pausar">⏸</button>
+      </div>
+    </div>
     <div id="cardsGrid"></div>
     <div class="dash-row">
       <div class="panel">
@@ -342,6 +385,7 @@ async function loadData(manual=false) {
     headers = rows[0].map(h=>h.trim());
     allData = rows.slice(1).filter(r=>r.some(c=>c.trim()));
     build();
+    buildTicker();
     show('dashboard');
     document.getElementById('lastUpdate').textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR');
     startRefresh();
@@ -680,6 +724,92 @@ function startRefresh() {
 }
 
 
+
+// ── COMMENT TICKER ───────────────────────────────────────────────────────
+let tickerItems=[], tickerIdx=0, tickerTimer=null, tickerPaused=false;
+
+function buildTicker() {
+  // Scan all localStorage keys for pcp_cm_
+  tickerItems = [];
+  for (let i=0; i<localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k.startsWith('pcp_cm_')) continue;
+    const comments = getComments(k.replace('pcp_cm_',''));
+    if (!comments.length) continue;
+    // Find matching row
+    const rowKey_ = k.replace('pcp_cm_','');
+    const row = allData.find(r => rowKey(r) === rowKey_);
+    if (!row) continue;
+    const pedCol  = headers.findIndex(h=>/pedido/i.test(h));
+    const cliCol  = headers.findIndex(h=>/cliente/i.test(h));
+    const descCol = headers.findIndex(h=>/descri/i.test(h));
+    const ped   = (row[pedCol]||'').trim();
+    const cli   = (row[cliCol]||'').trim();
+    const desc  = (row[descCol]||'').trim().slice(0,45);
+    const last  = comments[comments.length-1];
+    tickerItems.push({ key: rowKey_, ped, cli, desc, n: comments.length, lastUser: last.user, lastText: last.text.slice(0,60), lastTime: last.time });
+  }
+
+  const el = document.getElementById('cmTicker');
+  const wrap = document.getElementById('tickerWrap');
+  if (!tickerItems.length) { el.classList.remove('visible'); clearInterval(tickerTimer); return; }
+
+  el.classList.add('visible');
+  wrap.innerHTML = tickerItems.map((it,i) =>
+    `<div class="ticker-slide${i===0?' active':''}" onclick="tickerGoTo(${i})" data-ti="${i}">
+      💬 <b>Pedido ${it.ped}</b> · ${it.cli} · <span>${it.desc}</span>
+      — <i style="color:var(--text2)">${it.lastUser}:</i> "${it.lastText}" <span>(${it.n} nota${it.n>1?'s':''})</span>
+    </div>`
+  ).join('');
+
+  tickerIdx = 0;
+  updateTickerCounter();
+  startTickerAuto();
+}
+
+function updateTickerCounter() {
+  document.getElementById('tickerCounter').textContent = `${tickerIdx+1}/${tickerItems.length}`;
+  document.querySelectorAll('.ticker-slide').forEach((el,i)=>el.classList.toggle('active',i===tickerIdx));
+}
+
+function tickerGoTo(i) {
+  tickerIdx = i;
+  updateTickerCounter();
+  pauseTicker();
+  // Filter table to this pedido
+  const it = tickerItems[i];
+  if (it) {
+    const pedColIdx = headers.findIndex(h=>/pedido/i.test(h));
+    const sel = document.querySelector(`#extraFilters select[data-col="${pedColIdx}"]`);
+    // open the comment panel
+    openComments(it.key, `Pedido ${it.ped}`, it.desc);
+  }
+}
+
+function tickerNext() { tickerIdx = (tickerIdx+1)%tickerItems.length; updateTickerCounter(); pauseTicker(); }
+function tickerPrev() { tickerIdx = (tickerIdx-1+tickerItems.length)%tickerItems.length; updateTickerCounter(); pauseTicker(); }
+
+function startTickerAuto() {
+  clearInterval(tickerTimer);
+  if (!tickerPaused) {
+    tickerTimer = setInterval(()=>{ tickerIdx=(tickerIdx+1)%tickerItems.length; updateTickerCounter(); }, 3500);
+  }
+}
+
+function pauseTicker() {
+  tickerPaused = true;
+  clearInterval(tickerTimer);
+  const btn = document.getElementById('tickerPauseBtn');
+  if (btn) btn.textContent = '▶';
+}
+
+function toggleTickerPause() {
+  tickerPaused = !tickerPaused;
+  const btn = document.getElementById('tickerPauseBtn');
+  if (btn) btn.textContent = tickerPaused ? '▶' : '⏸';
+  if (!tickerPaused) startTickerAuto(); else clearInterval(tickerTimer);
+}
+
 // ── COMMENTS (localStorage) ──────────────────────────────────────────────
 let cmKey = null;
 
@@ -750,8 +880,8 @@ function addComment() {
   saveComments(cmKey, list);
   document.getElementById('cmText').value = '';
   renderComments();
-  // refresh badge in table
   refreshRowBadge(cmKey);
+  buildTicker();
 }
 
 function deleteComment(idx) {
@@ -761,6 +891,7 @@ function deleteComment(idx) {
   saveComments(cmKey, list);
   renderComments();
   refreshRowBadge(cmKey);
+  buildTicker();
 }
 
 function refreshRowBadge(key) {
